@@ -1,0 +1,5 @@
+{
+  "name": "Spoon - Professional Home Cooking",
+  "description": "Book professional chefs to cook fresh, delicious meals in your own kitchen. Real-time tracking, curated menus, and guaranteed hygiene.",
+  "requestFramePermissions": ["geolocation"]
+}
