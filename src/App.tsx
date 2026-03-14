@@ -2185,6 +2185,203 @@ const RatingPage = ({
 
 // --- Orders Page ---
 
+const ORDER_TIMELINE_STEPS = [
+  { status: 'CREATED', label: 'Order Placed', icon: ShoppingBasket },
+  { status: 'SEARCHING_COOK', label: 'Finding Cook', icon: Search },
+  { status: 'COOK_ASSIGNED', label: 'Cook Assigned', icon: User },
+  { status: 'COOK_ARRIVING', label: 'Cook En Route', icon: MapPin },
+  { status: 'COOKING', label: 'Cooking', icon: Utensils },
+  { status: 'COMPLETED', label: 'Completed', icon: CheckCircle2 },
+];
+
+const statusBadge = (status: string) => {
+  switch (status) {
+    case 'COMPLETED': return 'bg-green-100 text-green-700';
+    case 'CANCELLED': return 'bg-red-100 text-red-600';
+    case 'COOKING': return 'bg-orange-100 text-orange-700';
+    case 'COOK_ARRIVING': return 'bg-blue-100 text-blue-700';
+    case 'COOK_ASSIGNED': return 'bg-indigo-100 text-indigo-700';
+    case 'SEARCHING_COOK': return 'bg-yellow-100 text-yellow-700';
+    default: return 'bg-slate-100 text-slate-600';
+  }
+};
+
+const statusIndex = (status: string) =>
+  ORDER_TIMELINE_STEPS.findIndex(s => s.status === status);
+
+const OrderCard = ({ order, onView }: { order: Order; onView: () => void }) => {
+  const [expanded, setExpanded] = React.useState(false);
+  const currentIdx = statusIndex(order.status);
+  const isCancelled = order.status === 'CANCELLED';
+  const isCompleted = order.status === 'COMPLETED';
+  const dt = new Date(order.scheduledAt);
+  const formattedDate = dt.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  const formattedTime = dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden"
+    >
+      {/* Main card â always visible */}
+      <button onClick={() => setExpanded(!expanded)} className="w-full text-left p-4">
+        <div className="flex justify-between items-start mb-3">
+          <div>
+            <p className="font-bold text-slate-900 text-base">{order.serviceDuration} min session</p>
+            <p className="text-slate-400 text-xs mt-0.5">{formattedDate} at {formattedTime}</p>
+          </div>
+          <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${statusBadge(order.status)}`}>
+            {order.status === 'COOK_ARRIVING' ? 'EN ROUTE' : order.status.replace(/_/g, ' ')}
+          </span>
+        </div>
+
+        {/* Cook info */}
+        {order.cook && (
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+              {order.cook.avatarUrl
+                ? <img src={order.cook.avatarUrl} alt="" className="w-full h-full object-cover" />
+                : <Utensils size={18} className="text-yellow-600" />
+              }
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-800 truncate">{order.cook.name || 'Your Cook'}</p>
+              {order.cook.cookProfile && (
+                <div className="flex items-center gap-2 text-xs text-slate-400">
+                  <span className="flex items-center gap-0.5"><Star size={11} className="text-yellow-500" /> {order.cook.cookProfile.rating.toFixed(1)}</span>
+                  <span>{order.cook.cookProfile.totalSessions} sessions</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Address snippet */}
+        {order.address && (
+          <div className="flex items-start gap-1.5 mb-3">
+            <MapPin size={13} className="text-slate-400 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-slate-500 truncate">{order.address.line1}, {order.address.city}</p>
+          </div>
+        )}
+
+        {/* Price + expand toggle */}
+        <div className="flex justify-between items-center">
+          <p className="font-bold text-yellow-600 text-lg">â¹{(order.totalAmount / 100).toLocaleString('en-IN')}</p>
+          <ChevronDown size={18} className={`text-slate-400 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />
+        </div>
+      </button>
+
+      {/* Expanded details */}
+      {expanded && (
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          className="border-t border-slate-100 px-4 pb-4"
+        >
+          {/* Price breakdown */}
+          <div className="pt-3 pb-3 space-y-1 text-xs">
+            <div className="flex justify-between text-slate-500">
+              <span>Service fee</span><span>â¹{order.serviceCharge / 100}</span>
+            </div>
+            <div className="flex justify-between text-slate-500">
+              <span>Tax</span><span>â¹{order.taxAmount / 100}</span>
+            </div>
+            {order.discountAmount > 0 && (
+              <div className="flex justify-between text-green-600">
+                <span>Discount</span><span>-â¹{order.discountAmount / 100}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-bold text-slate-800 pt-1 border-t border-dashed border-slate-200">
+              <span>Total</span><span>â¹{(order.totalAmount / 100).toLocaleString('en-IN')}</span>
+            </div>
+          </div>
+
+          {/* Payment status */}
+          {order.payment && (
+            <div className="flex items-center gap-1.5 text-xs mb-3">
+              <div className={`w-1.5 h-1.5 rounded-full ${order.payment.status === 'COMPLETED' ? 'bg-green-500' : 'bg-yellow-500'}`} />
+              <span className="text-slate-500">Payment {order.payment.status.toLowerCase()}</span>
+            </div>
+          )}
+
+          {/* Cancellation reason */}
+          {isCancelled && order.cancelReason && (
+            <div className="bg-red-50 rounded-lg p-2.5 mb-3 text-xs text-red-600">
+              <span className="font-semibold">Cancelled:</span> {order.cancelReason}
+            </div>
+          )}
+
+          {/* Review snippet */}
+          {order.review && (
+            <div className="bg-yellow-50 rounded-lg p-2.5 mb-3">
+              <div className="flex items-center gap-1 mb-0.5">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Star key={i} size={12} className={i < order.review!.rating ? 'text-yellow-500 fill-yellow-500' : 'text-slate-300'} />
+                ))}
+              </div>
+              {order.review.comment && <p className="text-xs text-slate-600 mt-1">{order.review.comment}</p>}
+            </div>
+          )}
+
+          {/* Timeline */}
+          {!isCancelled && (
+            <div className="pt-2">
+              <p className="text-xs font-bold text-slate-700 mb-2">Order Timeline</p>
+              <div className="relative pl-5">
+                {ORDER_TIMELINE_STEPS.map((step, i) => {
+                  const done = i <= currentIdx;
+                  const isActive = i === currentIdx;
+                  const StepIcon = step.icon;
+                  return (
+                    <div key={step.status} className="relative pb-4 last:pb-0">
+                      {/* Connector line */}
+                      {i < ORDER_TIMELINE_STEPS.length - 1 && (
+                        <div className={`absolute left-[-13px] top-5 w-0.5 h-full ${i < currentIdx ? 'bg-green-400' : 'bg-slate-200'}`} />
+                      )}
+                      {/* Dot */}
+                      <div className={`absolute left-[-18px] top-0.5 w-[18px] h-[18px] rounded-full flex items-center justify-center ${
+                        done
+                          ? isActive && !isCompleted
+                            ? 'bg-yellow-500 ring-2 ring-yellow-200'
+                            : 'bg-green-500'
+                          : 'bg-slate-200'
+                      }`}>
+                        {done ? <Check size={10} className="text-white" /> : <Circle size={8} className="text-slate-400" />}
+                      </div>
+                      {/* Label */}
+                      <div className="flex items-center gap-1.5">
+                        <StepIcon size={13} className={done ? 'text-slate-700' : 'text-slate-400'} />
+                        <span className={`text-xs ${done ? 'text-slate-800 font-semibold' : 'text-slate-400'}`}>{step.label}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="mt-3 flex gap-2">
+            {(order.status === 'COOKING' || order.status === 'COOK_ARRIVING' || order.status === 'COOK_ASSIGNED') && (
+              <button onClick={(e) => { e.stopPropagation(); onView(); }} className="flex-1 bg-yellow-500 text-white text-xs font-bold py-2.5 rounded-xl hover:bg-yellow-600 transition-colors">
+                Track Live
+              </button>
+            )}
+            {isCompleted && !order.review && (
+              <button onClick={(e) => { e.stopPropagation(); onView(); }} className="flex-1 bg-yellow-500 text-white text-xs font-bold py-2.5 rounded-xl hover:bg-yellow-600 transition-colors">
+                Leave Review
+              </button>
+            )}
+          </div>
+        </motion.div>
+      )}
+    </motion.div>
+  );
+};
+
 const OrdersPage = ({
   orders,
   loading,
@@ -2198,51 +2395,37 @@ const OrdersPage = ({
   <motion.div
     initial={{ opacity: 0 }}
     animate={{ opacity: 1 }}
-    className="pb-24 min-h-screen"
+    className="pb-24 min-h-screen bg-slate-50"
   >
-    <div className="px-4 py-6">
+    <div className="px-4 py-5">
+      <h2 className="text-lg font-bold text-slate-900 mb-4">My Orders</h2>
+
       {loading ? (
-        <div className="text-center py-12">
-          <div className="w-8 h-8 border-4 border-yellow-200 border-t-yellow-500 rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-slate-400">Loading orders...</p>
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="bg-white rounded-2xl p-4 shadow-sm animate-pulse">
+              <div className="h-4 bg-slate-200 rounded w-2/3 mb-3" />
+              <div className="h-3 bg-slate-100 rounded w-1/2 mb-2" />
+              <div className="h-3 bg-slate-100 rounded w-1/3" />
+            </div>
+          ))}
         </div>
       ) : orders.length === 0 ? (
-        <div className="text-center py-12">
-          <ShoppingBasket size={48} className="text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-500 font-medium">No orders yet</p>
-          <p className="text-slate-400 text-sm mt-1">Book your first cook from the home page!</p>
+        <div className="text-center py-16">
+          <div className="w-16 h-16 rounded-full bg-yellow-100 flex items-center justify-center mx-auto mb-4">
+            <ShoppingBasket size={28} className="text-yellow-500" />
+          </div>
+          <p className="text-slate-700 font-bold text-base">No orders yet</p>
+          <p className="text-slate-400 text-sm mt-1 max-w-[240px] mx-auto">Book your first professional home cooking session from the home page!</p>
         </div>
       ) : (
         <div className="space-y-3">
           {orders.map(order => (
-            <button
+            <OrderCard
               key={order.id}
-              onClick={() => onViewOrder(order)}
-              className="w-full bg-white rounded-xl p-4 shadow-sm border border-yellow-50 text-left hover:shadow-md transition-shadow"
-            >
-              <div className="flex justify-between items-start mb-2">
-                <p className="font-bold text-slate-900">
-                  {order.serviceDuration} min session
-                </p>
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                  order.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
-                  order.status === 'CANCELLED' ? 'bg-yellow-100 text-yellow-700' :
-                  'bg-yellow-100 text-yellow-700'
-                }`}>
-                  {order.status.replace(/_/g, ' ')}
-                </span>
-              </div>
-              {order.cook && (
-                <p className="text-slate-600 text-sm mb-1">
-                  Cook: {order.cook.name}
-                </p>
-              )}
-              <p className="text-slate-500 text-xs">
-                {new Date(order.scheduledAt).toLocaleDateString()} at{' '}
-                {new Date(order.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </p>
-              <p className="text-yellow-600 font-bold mt-1">₹{order.totalAmount / 100}</p>
-            </button>
+              order={order}
+              onView={() => onViewOrder(order)}
+            />
           ))}
         </div>
       )}
@@ -2251,6 +2434,7 @@ const OrdersPage = ({
 );
 
 // --- Menu Page ---
+
 
 const MenuPage = (_props: { key?: string }) => (
   <motion.div
