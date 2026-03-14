@@ -41,11 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshProfile = useCallback(async () => {
     const token = getToken();
-    if (token === 'demo-token') {
-      // demo mode — restore mock user session, skip API call
-      setUser({ id: 'demo-user', phone: '+910000000000', name: 'Jane Doe', role: 'customer' });
-      return;
-    }
+    if (!token) return;
     try {
       const profile = await authApi.getProfile();
       setUser({
@@ -74,88 +70,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refreshProfile]);
 
   const login = async (phone: string) => {
-    try {
-      const result = await authApi.login(phone);
-      return { otp: result.otp };
-    } catch {
-      // Demo mode: backend unreachable, use mock OTP
-      return { otp: '510000' };
-    }
+    const result = await authApi.login(phone);
+    return { otp: result.otp };
   };
 
   const verify = async (phone: string, otp: string) => {
-    try {
-      const result = await authApi.verify(phone, otp);
-      setToken(result.token);
-      setUser({
-        id: result.user.id,
-        phone: result.user.phone,
-        name: result.user.name,
-        role: result.user.role,
-      });
-      try { connectSocket(); } catch {}
-      await refreshProfile();
-    } catch {
-      // Demo mode: backend unreachable, create mock user session
-      setToken('demo-token');
-      setUser({
-        id: 'demo-user',
-        phone: phone,
-        name: 'Jane Doe',
-        role: 'customer',
-      });
-      setAddresses([]);
-    }
+    const result = await authApi.verify(phone, otp);
+    setToken(result.token);
+    setUser({
+      id: result.user.id,
+      phone: result.user.phone,
+      name: result.user.name,
+      role: result.user.role,
+    });
+    try { connectSocket(); } catch {}
+    await refreshProfile();
   };
 
   const addAddress = async (data: Omit<Address, 'id' | 'userId'>): Promise<Address> => {
-    try {
-      const addr = await authApi.addAddress(data);
-      setAddresses(prev => [...prev, addr]);
-      return addr;
-    } catch {
-      // Demo mode: create address locally
-      const newAddr: Address = {
-        ...data,
-        id: 'addr-' + Date.now(),
-        userId: user?.id || 'demo-user',
-        isDefault: addresses.length === 0 ? true : data.isDefault,
-      };
-      setAddresses(prev => [...prev, newAddr]);
-      return newAddr;
-    }
+    const addr = await authApi.addAddress(data);
+    setAddresses(prev => [...prev, addr]);
+    return addr;
   };
 
   const deleteAddress = async (id: string): Promise<void> => {
-    try {
-      await authApi.deleteAddress(id);
-      setAddresses(prev => {
-        const remaining = prev.filter(a => a.id !== id);
-        if (remaining.length && !remaining.some(a => a.isDefault)) {
-          remaining[0].isDefault = true;
-        }
-        return remaining;
-      });
-    } catch {
-      // Demo mode: delete locally
-      setAddresses(prev => {
-        const remaining = prev.filter(a => a.id !== id);
-        if (remaining.length && !remaining.some(a => a.isDefault)) {
-          remaining[0].isDefault = true;
-        }
-        return remaining;
-      });
-    }
+    await authApi.deleteAddress(id);
+    setAddresses(prev => {
+      const remaining = prev.filter(a => a.id !== id);
+      if (remaining.length && !remaining.some(a => a.isDefault)) {
+        remaining[0].isDefault = true;
+      }
+      return remaining;
+    });
   };
 
   const updateName = async (name: string) => {
-    try {
-      await authApi.updateProfile({ name });
-      setUser(prev => prev ? { ...prev, name } : null);
-    } catch {
-      // Demo mode: update locally
-      setUser(prev => prev ? { ...prev, name } : null);
-    }
+    await authApi.updateProfile({ name });
+    setUser(prev => prev ? { ...prev, name } : null);
   };
 
   const setDefaultAddress = (id: string) => {
