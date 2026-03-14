@@ -41,7 +41,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshProfile = useCallback(async () => {
     const token = getToken();
-    if (token === 'demo-token') return; // demo mode — skip API call
+    if (token === 'demo-token') {
+      // demo mode — restore mock user session, skip API call
+      setUser({ id: 'demo-user', phone: '+910000000000', name: 'Jane Doe', role: 'customer' });
+      return;
+    }
     try {
       const profile = await authApi.getProfile();
       setUser({
