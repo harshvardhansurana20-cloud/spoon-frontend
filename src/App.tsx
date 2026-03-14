@@ -52,7 +52,7 @@ import {
 import { Page, SERVICES, MENU_ITEMS, MENU_CATEGORIES, Service, MenuItem, MULTI_DAY_OPTIONS, BookingInfo } from './types';
 import SpoonLogo from './SpoonLogo';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { ordersApi, reviewsApi, paymentsApi, Order, Address, getToken } from './services/api';
+import { ordersApi, reviewsApi, paymentsApi, Order, Address } from './services/api';
 import {
   connectSocket,
   onOrderAccepted,
@@ -191,7 +191,7 @@ const LoginPage = ({ onSuccess }: { key?: string; onSuccess: () => void }) => {
 
   // If user already has a name when reaching profile step, auto-proceed
   useEffect(() => {
-    if (step === 'profile' && user?.name && user.name !== 'Jane Doe') {
+    if (step === 'profile' && user?.name) {
       onSuccess();
     }
   }, [step, user?.name]);
@@ -1980,13 +1980,11 @@ const RatingPage = ({
     setSubmitting(true);
     setError('');
     try {
-      if (getToken() !== 'demo-token') {
-        await reviewsApi.create({
-          orderId: order.id,
-          rating,
-          comment: comment.trim() || undefined,
-        });
-      }
+      await reviewsApi.create({
+        orderId: order.id,
+        rating,
+        comment: comment.trim() || undefined,
+      });
       setSubmitted(true);
       setTimeout(onDone, 1800);
     } catch (e: any) {
@@ -3147,105 +3145,61 @@ function AppContent() {
     }
     setBookingLoading(true);
 
-    if (getToken() === 'demo-token') {
-      // Demo mode: create mock order locally
-      const mockOrder: Order = {
-        id: 'order-' + Date.now(),
-        customerId: 'demo-user',
-        cookId: null,
+    try {
+      // 1. Create the order on the backend
+      const order = await ordersApi.create({
         addressId: selectedAddress.id,
         serviceDuration: DURATION_MAP[selectedService.duration] || 60,
         scheduledAt: new Date(Date.now() + 49 * 60000).toISOString(),
-        status: 'SEARCHING_COOK',
-        totalAmount: (selectedService.price + 15) * 100, // store in paise
-        serviceCharge: 1500,
-        taxAmount: 0,
-        discountAmount: 0,
-        specialInstructions: null,
-        menuItems: null,
-        cookingStartedAt: null,
-        cookingEndedAt: null,
-        cancelReason: null,
-        address: selectedAddress,
-      };
-      setActiveOrder(mockOrder);
-      setSelectedService(null);
-      setSelectedAddress(null);
-      setBookingInfo({ mode: 'now' });
-      setPage('tracking');
-      // Simulate full order lifecycle in demo mode
-      const demoCook = { id: 'cook-1', name: 'Chef Anita', phone: '9876543210', avatarUrl: null, cookProfile: { rating: 4.8, yearsOfExperience: 5, totalSessions: 342 } };
-      setTimeout(() => {
-        setActiveOrder(prev => prev ? { ...prev, status: 'COOK_ASSIGNED', cookId: 'cook-1', cook: demoCook } : null);
-      }, 3000);
-      setTimeout(() => {
-        setActiveOrder(prev => prev ? { ...prev, status: 'COOK_ARRIVING' } : null);
-      }, 6000);
-      setTimeout(() => {
-        const now = new Date().toISOString();
-        setActiveOrder(prev => prev ? { ...prev, status: 'COOKING', cookingStartedAt: now } : null);
-      }, 9000);
-      setTimeout(() => {
-        const now = new Date().toISOString();
-        setActiveOrder(prev => prev ? { ...prev, status: 'COMPLETED', cookingEndedAt: now } : null);
-      }, 18000);
-    } else {
-      try {
-        // 1. Create the order on the backend
-        const order = await ordersApi.create({
-          addressId: selectedAddress.id,
-          serviceDuration: DURATION_MAP[selectedService.duration] || 60,
-          scheduledAt: new Date(Date.now() + 49 * 60000).toISOString(),
-        });
+      });
 
-        // 2. Create a Razorpay payment order
-        const paymentOrder = await paymentsApi.createOrder(order.id);
+      // 2. Create a Razorpay payment order
+      const paymentOrder = await paymentsApi.createOrder(order.id);
 
-        // 3. Open Razorpay checkout
-        const rzp = new window.Razorpay({
-          key: paymentOrder.key,
-          amount: paymentOrder.amount,
-          currency: paymentOrder.currency,
-          name: 'Spoon',
-          description: `${order.serviceDuration} min cooking session`,
-          order_id: paymentOrder.razorpayOrderId,
-          prefill: {
-            name: user?.name || '',
-            contact: user?.phone || '',
-          },
-          theme: { color: '#e9a83a' },
-          handler: async (response) => {
-            try {
-              // 4. Verify payment signature on backend
-              await paymentsApi.verify({
-                razorpayOrderId: response.razorpay_order_id,
-                razorpayPaymentId: response.razorpay_payment_id,
-                razorpaySignature: response.razorpay_signature,
-              });
-              // 5. Payment verified — proceed to tracking
-              setActiveOrder(order);
-              try { joinOrderRoom(order.id); } catch {}
-              setSelectedService(null);
-              setSelectedAddress(null);
-              setBookingInfo({ mode: 'now' });
-              setPage('tracking');
-            } catch {
-              alert('Payment verification failed. Please contact support.');
-            }
+      // 3. Open Razorpay checkout
+      const rzp = new window.Razorpay({
+        key: paymentOrder.key,
+        amount: paymentOrder.amount,
+        currency: paymentOrder.currency,
+        name: 'Spoon',
+        description: `${order.serviceDuration} min cooking session`,
+        order_id: paymentOrder.razorpayOrderId,
+        prefill: {
+          name: user?.name || '',
+          contact: user?.phone || '',
+        },
+        theme: { color: '#e9a83a' },
+        handler: async (response) => {
+          try {
+            // 4. Verify payment signature on backend
+            await paymentsApi.verify({
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
+            });
+            // 5. Payment verified — proceed to tracking
+            setActiveOrder(order);
+            try { joinOrderRoom(order.id); } catch {}
+            setSelectedService(null);
+            setSelectedAddress(null);
+            setBookingInfo({ mode: 'now' });
+            setPage('tracking');
+          } catch {
+            alert('Payment verification failed. Please contact support.');
+          }
+          setBookingLoading(false);
+        },
+        modal: {
+          ondismiss: () => {
+            // User closed the checkout without paying
             setBookingLoading(false);
           },
-          modal: {
-            ondismiss: () => {
-              // User closed the checkout without paying
-              setBookingLoading(false);
-            },
-          },
-        });
-        rzp.open();
-        return; // Don't setBookingLoading(false) here — handler/dismiss will do it
-      } catch (e: any) {
-        alert(e.message || 'Failed to create order');
-      }
+        },
+      });
+      rzp.open();
+      return; // Don't setBookingLoading(false) here — handler/dismiss will do it
+    } catch (e: any) {
+      alert(e.message || 'Failed to create order');
     }
     setBookingLoading(false);
   };
